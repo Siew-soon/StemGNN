@@ -104,7 +104,7 @@ def validate(
         f"NORM: MAPE {score_norm[0]:7.9%}; MAE {score_norm[1]:7.9f}; MSE {score_norm[2]:7.9f}; RMSE {np.sqrt(score_norm[2]):7.9f}."
     )
     print(
-        f"RAW : MAPE {score[0]:7.9%}; MAE {score[1]:7.9f}; MSE {score[2]:7.9f}; RMSE {np.sqrt(score_norm[2]):7.9f}."
+        f"RAW : MAPE {score[0]:7.9%}; MAE {score[1]:7.9f}; MSE {score[2]:7.9f}; RMSE {np.sqrt(score[2]):7.9f}."
     )
     if result_file:
         if not os.path.exists(result_file):
@@ -300,6 +300,49 @@ def test(test_data, args, result_train_file, result_test_file):
     )
     print(
         "Performance on test set: MAPE: {:5.2f} | MAE: {:5.2f} | MSE: {:5.4f} | RMSE: {:5.4f} ".format(
+            mape, mae, mse, rmse
+        )
+    )
+
+
+def forward_test(forward_test_data, args, result_train_file, result_forward_test_file):
+    with open(os.path.join(result_train_file, "norm_stat.json"), "r") as f:
+        normalize_statistic = json.load(f)
+    model = load_model(result_train_file)
+    node_cnt = forward_test_data.shape[1]
+    forward_test_set = ForecastDataset(
+        forward_test_data,
+        window_size=args.window_size,
+        horizon=args.horizon,
+        normalize_method=args.norm_method,
+        norm_statistic=normalize_statistic,
+    )
+    forward_test_loader = torch_data.DataLoader(
+        forward_test_set,
+        batch_size=args.batch_size,
+        drop_last=False,
+        shuffle=False,
+        num_workers=0,
+    )
+    performance_metrics = validate(
+        model,
+        forward_test_loader,
+        args.device,
+        args.norm_method,
+        normalize_statistic,
+        node_cnt,
+        args.window_size,
+        args.horizon,
+        result_file=result_forward_test_file,
+    )
+    mae, mape, mse, rmse = (
+        performance_metrics["mae"],
+        performance_metrics["mape"],
+        performance_metrics["mse"],
+        np.sqrt(performance_metrics["mse"]),
+    )
+    print(
+        "Performance on forward test set: MAPE: {:5.2f} | MAE: {:5.2f} | MSE: {:5.4f} | RMSE: {:5.4f} ".format(
             mape, mae, mse, rmse
         )
     )

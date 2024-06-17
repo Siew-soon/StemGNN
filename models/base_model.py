@@ -10,7 +10,6 @@ class GLU(nn.Module):
         self.linear_right = nn.Linear(input_channel, output_channel)
 
     def forward(self, x):
-        # print("\nx: ", x.shape)
         return torch.mul(self.linear_left(x), torch.sigmoid(self.linear_right(x)))
 
 
@@ -26,8 +25,6 @@ class StockBlockLayer(nn.Module):
                 1, 3 + 1, 1, self.time_step * self.multi, self.multi * self.time_step
             )
         )  # [K+1, 1, in_c, out_c]
-        # print("\nweight1: ", self.weight.shape)
-
         nn.init.xavier_normal_(self.weight)
         self.forecast = nn.Linear(
             self.time_step * self.multi, self.time_step * self.multi
@@ -78,71 +75,34 @@ class StockBlockLayer(nn.Module):
     def spe_seq_cell(self, input):
         batch_size, k, input_channel, node_cnt, time_step = input.size()
         input = input.view(batch_size, -1, node_cnt, time_step)
-        # print("\ninput: ", input.shape)
-
         ffted = torch.fft.fft(input, dim=-1)
-        # print("\nffted: ", ffted.shape)
-
         real = (
             ffted.real.permute(0, 2, 1, 3)
             .contiguous()
             .reshape(batch_size, node_cnt, -1)
         )
-        # print("\nreal1: ", real.shape)
-
         img = (
             ffted.imag.permute(0, 2, 1, 3)
             .contiguous()
             .reshape(batch_size, node_cnt, -1)
         )
-        # print("\nimg1: ", img.shape)
-
         for i in range(3):
             real = self.GLUs[i * 2](real)
             img = self.GLUs[2 * i + 1](img)
-            # print(f"\nreal{i+2}: ", real.shape)
-            # print(f"\nimg{i+2}:", img.shape)
-
         real = (
             real.reshape(batch_size, node_cnt, 4, -1).permute(0, 2, 1, 3).contiguous()
         )
-        # print("\nreal5: ", real.shape)
-
         img = img.reshape(batch_size, node_cnt, 4, -1).permute(0, 2, 1, 3).contiguous()
-        # print("\nimg5: ", img.shape)
-
         time_step_as_inner = torch.cat([real.unsqueeze(-1), img.unsqueeze(-1)], dim=-1)
-        # print("\ntime_step_as_inner: ", time_step_as_inner.shape)
-
         iffted = torch.fft.irfft(time_step_as_inner, 1)
-        # print("\niffted: ", iffted.shape)
-
         return iffted
 
     def forward(self, x, mul_L):
-        # print("\nmul_L before unsqueeze: ", mul_L.shape)
-        # print("\nx before unsqueeze: ", x.shape)
-
         mul_L = mul_L.unsqueeze(1)
-        # print("\nmul_L after unsqueeze: ", mul_L.shape)
-
         x = x.unsqueeze(1)
-        # print("\nx after unsqueeze: ", x.shape)
-
         gfted = torch.matmul(mul_L, x)
-        # print("\ngfted: ", gfted.shape)
-
         gconv_input = self.spe_seq_cell(gfted)
-        # print("\ngconv_input: ", gconv_input.shape)
-
         gconv_input = gconv_input.unsqueeze(2)
-        # print("\ngconv_input after unsqueeze: ", gconv_input.shape)
-        # print("\nweight: ", self.weight.shape)
-
-        # Permute the dimensions to bring the dimension with size 60 to the last dimension
-        # gconv_input_reshaped = gconv_input.permute(0, 1, 2, 3, 5, 4)
-        # print("\ngconv_input:", gconv_input_reshaped.shape)
-
         # Permute the dimensions to bring the dimension with size 60 to the last dimension
         gconv_input_permuted = gconv_input.permute(0, 1, 2, 3, 5, 4)
 
@@ -150,35 +110,16 @@ class StockBlockLayer(nn.Module):
         gconv_input_reshaped = gconv_input_permuted.reshape(
             gconv_input.shape[:-2] + (-1,)
         )
-        # print("\ngconv_input:", gconv_input_reshaped.shape)
 
         # Perform matrix multiplication
         igfted = torch.matmul(gconv_input_reshaped, self.weight)
-        # print("\nigfted after multiplication: ", igfted.shape)
-
-        # mul_L before unsqueeze:  torch.Size([4, 228, 228])
-
-        # x before unsqueeze:  torch.Size([32, 1, 228, 12])
-
-        # mul_L after unsqueeze:  torch.Size([4, 1, 228, 228])
-
-        # x after unsqueeze:  torch.Size([32, 1, 1, 228, 12])
-
-        # gconv_input:  torch.Size([32, 4, 228, 60, 1])
-
-        # gconv_input after unsqueeze:  torch.Size([32, 4, 1, 228, 60, 1])
-
-        # weight2:  torch.Size([1, 4, 1, 60, 60])
 
         igfted = torch.sum(igfted, dim=1)
-        # print("\nigfted after sum: ", igfted.shape)
 
         forecast_source = torch.sigmoid(self.forecast(igfted).squeeze(1))
         forecast = self.forecast_result(forecast_source)
         if self.stack_cnt == 0:
             backcast_short = self.backcast_short_cut(x).squeeze(1)
-            # print("\nbackcast_short: ", backcast_short.shape)
-            # print("\n self.backcast(igfted): ", self.backcast(igfted).shape)
             backcast_source = torch.sigmoid(self.backcast(igfted) - backcast_short)
         else:
             backcast_source = None
@@ -300,20 +241,6 @@ class Model(nn.Module):
     def graph_fft(self, input, eigenvectors):
         return torch.matmul(eigenvectors, input)
 
-    # def forward(self, x):
-    #     mul_L, attention = self.latent_correlation_layer(x)
-    #     X = x.unsqueeze(1).permute(0, 1, 3, 2).contiguous()
-    #     result = []
-    #     for stack_i in range(self.stack_cnt):
-    #         forecast, X = self.stock_block[stack_i](X, mul_L)
-    #         result.append(forecast)
-    #     forecast = result[0] + result[1]
-    #     forecast = self.fc(forecast)
-    #     if forecast.size()[-1] == 1:
-    #         return forecast.unsqueeze(1).squeeze(-1), attention
-    #     else:
-    #         return forecast.permute(0, 2, 1).contiguous(), attention
-
     def forward(self, x):
         mul_L, attention = self.latent_correlation_layer(x)
         X = x.unsqueeze(1).permute(0, 1, 3, 2).contiguous()
@@ -327,8 +254,4 @@ class Model(nn.Module):
             output = forecast.unsqueeze(1).squeeze(-1)
         else:
             output = forecast.permute(0, 2, 1).contiguous()
-
-        # print(
-        #     "Training completed successfully!"
-        # )  # Add this line to indicate training completion
         return output, attention

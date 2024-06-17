@@ -94,14 +94,31 @@ def data_formating(data):
     ).year
 
     # Boolean indexing to remove rows within top_date and bottom_date
-    data = data[
+    train_data = data[
         (data["Date"].dt.year != top_year) & (data["Date"].dt.year != bottom_year)
     ]
 
     # Drop unneeded columns
-    data = data.drop(columns=["Date"])
+    train_data = train_data.drop(columns=["Date"])
 
-    return data
+    return train_data
+
+
+def extract_forward_data(data):
+
+    # Convert "Date" column to datetime
+    data["Date"] = pd.to_datetime(data["Date"], format="%Y.%m.%d %H:%M")
+
+    # Extract the year from top_date and bottom_date
+    top_year = datetime.strptime(str(data.iloc[0]["Date"]), "%Y-%m-%d %H:%M:%S").year
+
+    # Boolean indexing to store rows within top_date
+    forward_data = data[data["Date"].dt.year != top_year]
+
+    # Drop unneeded columns
+    forward_data = forward_data.drop(columns=["Date"])
+
+    return forward_data
 
 
 def ensure_numeric(data):

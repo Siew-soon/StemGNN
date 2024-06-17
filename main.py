@@ -3,19 +3,20 @@ import torch
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 from datetime import datetime
-from models.handler import train, test
+from models.handler import train, test, forward_test
 import argparse
 import pandas as pd
 import numpy as np
 from data_centric_approach import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--train", type=bool, default=True)
-parser.add_argument("--evaluate", type=bool, default=True)
+parser.add_argument("--train", type=bool, default=False)
+parser.add_argument("--evaluate", type=bool, default=False)
+parser.add_argument("--forward_test", type=bool, default=True)
 parser.add_argument(
     "--dataset",
     type=str,
-    default="EURUSD60_OHLC_MACD_Stochastic_EMA10_EMA20_EMA200",
+    default="EURUSD30_OHLC_MACD_MA10_MA20",
 )
 parser.add_argument("--window_size", type=int, default=12)
 parser.add_argument("--horizon", type=int, default=3)
@@ -35,6 +36,7 @@ parser.add_argument("--exponential_decay_step", type=int, default=5)
 parser.add_argument("--decay_rate", type=float, default=0.5)
 parser.add_argument("--dropout_rate", type=float, default=0.5)
 parser.add_argument("--leakyrelu_rate", type=int, default=0.2)
+parser.add_argument("--data_centric_approach", type=bool, default=False)
 
 
 args = parser.parse_args()
@@ -42,25 +44,26 @@ print(f"Training configs: {args}")
 data_file = os.path.join("dataset", args.dataset + ".csv")
 result_train_file = os.path.join("output", args.dataset, "train")
 result_test_file = os.path.join("output", args.dataset, "test")
+result_forward_test_file = os.path.join("output", args.dataset, "forward_test")
+
 if not os.path.exists(result_train_file):
     os.makedirs(result_train_file)
 if not os.path.exists(result_test_file):
     os.makedirs(result_test_file)
+if not os.path.exists(result_forward_test_file):
+    os.makedirs(result_forward_test_file)
 data = pd.read_csv(data_file)
-
 
 # data centric approach
-data = calculate_rolling_statistics(data)  # Calculate rolling statistics
-data = create_lagged_features(data)  # Create lagged features
-data = data_formating(data)  # Now, remove the header before training the model
-data = ensure_numeric(data)
-data = data.copy()  # Make a copy to preserve the original DataFrame
-data_array = data.values  # Convert DataFrame to NumPy array
+if args.data_centric_approach:
+    data = calculate_rolling_statistics(data)  # Calculate rolling statistics
+    data = create_lagged_features(data)  # Create lagged features
 
-# Save NumPy array to a text file without header
-np.savetxt(f"dataset/Copy_{args.dataset}.csv", data_array, delimiter=",", fmt="%s")
-data_file = os.path.join("dataset", "Copy_" + args.dataset + ".csv")
-data = pd.read_csv(data_file)
+forward_data = data.copy()
+forward_data = extract_forward_data(forward_data)
+forward_data = forward_data.values
+
+data = data_formating(data)  # Now, remove the header before training the model
 data = data.values
 
 # split data
@@ -92,8 +95,17 @@ if __name__ == "__main__":
             print("-" * 99)
             print("Exiting from training early")
     if args.evaluate:
+        print("Perform test data evaluation with size: ", len(test_data))
         before_evaluation = datetime.now().timestamp()
         test(test_data, args, result_train_file, result_test_file)
         after_evaluation = datetime.now().timestamp()
         print(f"Evaluation took {(after_evaluation - before_evaluation) / 60} minutes")
+    if args.forward_test:
+        print("Perform out sample data evaluation with size: ", len(forward_data))
+        before_evaluation = datetime.now().timestamp()
+        forward_test(forward_data, args, result_train_file, result_forward_test_file)
+        after_evaluation = datetime.now().timestamp()
+        print(
+            f"Out sample data evaluation took {(after_evaluation - before_evaluation) / 60} minutes"
+        )
     print("done")
