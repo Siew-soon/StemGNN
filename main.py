@@ -10,13 +10,13 @@ import numpy as np
 from data_centric_approach import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--train", type=bool, default=False)
-parser.add_argument("--evaluate", type=bool, default=False)
-parser.add_argument("--forward_test", type=bool, default=True)
+parser.add_argument("--train", type=bool, default=True)
+parser.add_argument("--evaluate", type=bool, default=True)
+parser.add_argument("--forward_test", type=bool, default=False)
 parser.add_argument(
     "--dataset",
     type=str,
-    default="EURUSD30_OHLC_MACD_MA10_MA20",
+    default="EURUSD60_OHLC_MACD_MA10_MA20",
 )
 parser.add_argument("--window_size", type=int, default=12)
 parser.add_argument("--horizon", type=int, default=3)
@@ -45,6 +45,9 @@ data_file = os.path.join("dataset", args.dataset + ".csv")
 result_train_file = os.path.join("output", args.dataset, "train")
 result_test_file = os.path.join("output", args.dataset, "test")
 result_forward_test_file = os.path.join("output", args.dataset, "forward_test")
+data_centric_file = os.path.join(
+    "output", args.dataset, "data_centric_approach.csv"
+)  # Updated line for CSV file path
 
 if not os.path.exists(result_train_file):
     os.makedirs(result_train_file)
@@ -52,6 +55,11 @@ if not os.path.exists(result_test_file):
     os.makedirs(result_test_file)
 if not os.path.exists(result_forward_test_file):
     os.makedirs(result_forward_test_file)
+if not os.path.exists(
+    os.path.dirname(data_centric_file)
+):  # Ensure directory for data-centric file exists
+    os.makedirs(os.path.dirname(data_centric_file))
+
 data = pd.read_csv(data_file)
 
 # data centric approach
@@ -59,11 +67,17 @@ if args.data_centric_approach:
     data = calculate_rolling_statistics(data)  # Calculate rolling statistics
     data = create_lagged_features(data)  # Create lagged features
 
-forward_data = data.copy()
-forward_data = extract_forward_data(forward_data)
-forward_data = forward_data.values
+    # Save the data after applying data-centric approach to a CSV file
+    data.to_csv(data_centric_file, index=False)  # Save DataFrame to CSV
+
+if args.forward_test:
+    forward_data = data.copy()
+    forward_data = extract_forward_data(forward_data)
+    forward_data = forward_data.values
 
 data = data_formating(data)  # Now, remove the header before training the model
+
+# print("\n2", data)
 data = data.values
 
 # split data
